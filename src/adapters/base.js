@@ -22,6 +22,10 @@ class BaseAdapter {
     throw new Error(`sendMessage() not implemented for ${this.type}`);
   }
 
+  normalizeChannelId(channelId) {
+    return String(channelId);
+  }
+
   isOwnMessage(_message) {
     return false;
   }

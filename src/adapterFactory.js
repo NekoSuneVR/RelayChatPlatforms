@@ -1,5 +1,8 @@
 const DiscordAdapter = require('./adapters/discord');
 const GameVoxAdapter = require('./adapters/gamevox');
+const RootAppAdapter = require('./adapters/rootapp');
+const StoatAdapter = require('./adapters/stoat');
+const VectorAdapter = require('./adapters/vector');
 const UnsupportedAdapter = require('./adapters/unsupported');
 
 function createAdapter(id, definition) {
@@ -15,15 +18,15 @@ function createAdapter(id, definition) {
     case 'gamevox':
       return new GameVoxAdapter(fullDefinition);
 
-    // Future:
-    // case 'rootapp':
-    //   return new RootAppAdapter(fullDefinition);
-    //
-    // case 'vectorapp':
-    //   return new VectorAppAdapter(fullDefinition);
-    //
-    // case 'stoat':
-    //   return new StoatAdapter(fullDefinition);
+    case 'rootapp':
+      return new RootAppAdapter(fullDefinition);
+
+    case 'vector':
+    case 'vectorapp':
+      return new VectorAdapter(fullDefinition);
+
+    case 'stoat':
+      return new StoatAdapter(fullDefinition);
 
     default:
       return new UnsupportedAdapter(fullDefinition);

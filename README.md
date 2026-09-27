@@ -4,9 +4,9 @@ A platform-aware Node.js relay designed to bridge chat between:
 
 - Discord
 - GameVox
-- RootApp *(future adapter)*
-- VectorApp *(future adapter)*
-- Stoat *(future adapter)*
+- Root (`@rootsdk/server-bot`)
+- Vector (`@nekosuneprojects/vector-sdk`)
+- Stoat (`stoat.js`)
 - any other platform added later
 
 The relay core no longer assumes that a message comes from Discord or GameVox.
@@ -27,6 +27,62 @@ Also uses `discord.js`, with GameVox's Discord-compatible REST/Gateway:
 rest: { api: 'https://bot-api.gamevox.com/api' },
 ws:   { gatewayURL: 'wss://gateway.gamevox.com' },
 ```
+
+### Stoat
+
+Uses [`stoat.js`](https://github.com/stoatchat/javascript-client-sdk). Needs a bot
+token in `STOAT_BOT_TOKEN`; `channelId` is a Stoat channel ID. Set `baseURL` on the
+platform definition to use a self-hosted instance.
+
+```json
+"stoat-main": { "type": "stoat", "displayName": "Stoat", "tokenEnv": "STOAT_BOT_TOKEN" }
+```
+
+### Vector
+
+Uses [`@nekosuneprojects/vector-sdk`](https://www.npmjs.com/package/@nekosuneprojects/vector-sdk).
+The bot is a Nostr key (`VECTOR_PRIVATE_KEY`, nsec or hex). Vector has no server
+channels, so a `channelId` is either:
+
+- an `npub…` or hex pubkey: relays with that user over private DMs
+- `group:<groupId>`: a Vector MLS group. Set `VECTOR_MLS_SIDECAR_BIN` to the
+  compiled MLS sidecar (`mlsSidecarBinEnv` in the definition), or group sends fail
+
+```json
+"vector-main": {
+  "type": "vector",
+  "displayName": "Vector",
+  "tokenEnv": "VECTOR_PRIVATE_KEY",
+  "relaysEnv": "VECTOR_RELAYS",
+  "mlsSidecarBinEnv": "VECTOR_MLS_SIDECAR_BIN",
+  "profile": { "name": "relaybot", "displayName": "Relay Bot" }
+}
+```
+
+Vector attachments are end-to-end encrypted, so their URLs are not relayed.
+
+### Root
+
+Uses [`@rootsdk/server-bot`](https://docs.rootapp.com/docs/bot-docs/bot-home/).
+Root bots do **not** log in with a token: Root's host launches the process and
+injects the community connection. That means when Root is in the config, the
+whole relay runs as the Root bot:
+
+- **Local testing:** put your `DEV_TOKEN` in `.env`, set the bot `id` in
+  `root-manifest.json`, then run `npm run root:dev` (instead of `npm start`).
+- **Production:** Root bots must be hosted in Root's cloud (upload with
+  `rootsdk`). Outbound connections to Discord/Stoat/Vector are allowed there.
+
+One Root community per process, so configure at most one `rootapp` platform.
+`channelId` is a Root channel GUID. Running `npm start` with a `rootapp` platform
+configured fails at startup with a message explaining this.
+
+```json
+"rootapp-main": { "type": "rootapp", "displayName": "Root" }
+```
+
+Bot permissions (`createMessage`, `viewMessageHistory`) are declared in
+`root-manifest.json`.
 
 ## Example relayed messages
 
@@ -79,7 +135,7 @@ Example:
 Anything posted in either channel gets sent to every other channel in that
 relay group.
 
-Later, once adapters exist, the same group could simply become:
+The same group can span every platform:
 
 ```json
 {
@@ -100,7 +156,7 @@ Later, once adapters exist, the same group could simply become:
     },
     {
       "platform": "vectorapp-main",
-      "channelId": "vector-group-id"
+      "channelId": "group:vector-group-id"
     },
     {
       "platform": "stoat-main",
@@ -110,7 +166,8 @@ Later, once adapters exist, the same group could simply become:
 }
 ```
 
-The relay engine itself does not need to change.
+Adapters can also implement `normalizeChannelId()` when one channel has several
+spellings (Vector accepts both `npub…` and hex).
 
 ---
 
@@ -157,7 +214,7 @@ platform later, for example:
 
 # Install
 
-Requires Node.js 20+.
+Requires Node.js 22.15+ (`stoat.js` is ESM-only and needs it).
 
 ```bash
 npm install
@@ -225,8 +282,7 @@ normalizeMessage()
 destroy()
 ```
 
-Because of that, RootApp, VectorApp, Stoat, Matrix, Revolt or another platform
-can be added without modifying the central relay engine.
+Because of that, Matrix or another platform can be added without modifying the central relay engine.
 
 A platform-specific adapter only needs to convert that platform's message
 format into the relay's normalized structure:

@@ -9,6 +9,27 @@
       "type": "gamevox",
       "displayName": "GameVox",
       "tokenEnv": "GAMEVOX_BOT_TOKEN"
+    },
+    "stoat-main": {
+      "type": "stoat",
+      "displayName": "Stoat",
+      "tokenEnv": "STOAT_BOT_TOKEN"
+    },
+    "vector-main": {
+      "type": "vector",
+      "displayName": "Vector",
+      "tokenEnv": "VECTOR_PRIVATE_KEY",
+      "relaysEnv": "VECTOR_RELAYS",
+      "mlsSidecarBinEnv": "VECTOR_MLS_SIDECAR_BIN",
+      "profile": {
+        "name": "relaybot",
+        "displayName": "Relay Bot",
+        "about": "Multi-platform chat relay"
+      }
+    },
+    "rootapp-main": {
+      "type": "rootapp",
+      "displayName": "Root"
     }
   },
   "relayGroups": [
@@ -23,6 +44,18 @@
         {
           "platform": "gamevox-main",
           "channelId": "GAMEVOX_CHANNEL_ID_HERE"
+        },
+        {
+          "platform": "stoat-main",
+          "channelId": "STOAT_CHANNEL_ID_HERE"
+        },
+        {
+          "platform": "vector-main",
+          "channelId": "group:VECTOR_GROUP_ID_HERE"
+        },
+        {
+          "platform": "rootapp-main",
+          "channelId": "ROOT_CHANNEL_ID_HERE"
         }
       ]
     }

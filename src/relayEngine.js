@@ -34,13 +34,24 @@ class RelayEngine {
     }, 10 * 60 * 1000).unref();
   }
 
+  isSameChannel(entry, platformId, channelId) {
+    if (entry.platform !== platformId) {
+      return false;
+    }
+
+    const adapter = this.adapters.get(platformId);
+
+    return (
+      adapter.normalizeChannelId(entry.channelId) ===
+      adapter.normalizeChannelId(channelId)
+    );
+  }
+
   getGroupsForChannel(platformId, channelId) {
     return (this.config.relayGroups || []).filter(group =>
       Array.isArray(group.channels) &&
-      group.channels.some(
-        entry =>
-          entry.platform === platformId &&
-          String(entry.channelId) === String(channelId)
+      group.channels.some(entry =>
+        this.isSameChannel(entry, platformId, channelId)
       )
     );
   }
@@ -92,7 +103,7 @@ class RelayEngine {
       return;
     }
 
-    const message = sourceAdapter.normalizeMessage(rawMessage);
+    const message = await sourceAdapter.normalizeMessage(rawMessage);
 
     if (this.relayedMessageIds.has(message.id)) {
       return;
@@ -116,10 +127,7 @@ class RelayEngine {
       }
 
       for (const target of relayGroup.channels) {
-        if (
-          target.platform === platformId &&
-          String(target.channelId) === String(message.channelId)
-        ) {
+        if (this.isSameChannel(target, platformId, message.channelId)) {
           continue;
         }
 

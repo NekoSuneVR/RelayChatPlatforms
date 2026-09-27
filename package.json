@@ -1,15 +1,16 @@
 {
   "name": "discord-gamevox-relay",
   "version": "2.0.0",
-  "description": "Platform-aware multi-service chat relay with Discord and GameVox adapters",
+  "description": "Platform-aware multi-service chat relay (Discord, GameVox, Root, Vector, Stoat)",
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "root:dev": "rootsdk start devhost"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.15"
   },
   "dependencies": {
     "@nekosuneprojects/vector-sdk": "^1.1.2",
@@ -17,5 +18,8 @@
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.2",
     "stoat.js": "^7.3.6"
+  },
+  "devDependencies": {
+    "@rootsdk/dev-tools": "^0.21.3"
   }
 }

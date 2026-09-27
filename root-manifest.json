@@ -1,0 +1,18 @@
+{
+  "id": "your-bot-id",
+  "version": "1.0.0",
+  "package": {
+    "server": {
+      "launch": "src/index.js",
+      "deploy": ["src", "config"],
+      "nodeModules": ["node_modules"]
+    }
+  },
+  "permissions": {
+    "community": {},
+    "channel": {
+      "createMessage": true,
+      "viewMessageHistory": true
+    }
+  }
+}
