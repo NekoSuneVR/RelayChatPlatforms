@@ -13,7 +13,7 @@
     "node": ">=22.15"
   },
   "dependencies": {
-    "@nekosuneprojects/vector-sdk": "^1.1.2",
+    "@nekosuneprojects/vector-sdk": "^1.2.0",
     "@rootsdk/server-bot": "^0.21.3",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.2",

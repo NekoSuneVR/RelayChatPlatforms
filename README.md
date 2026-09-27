@@ -41,8 +41,19 @@ platform definition to use a self-hosted instance.
 ### Vector
 
 Uses [`@nekosuneprojects/vector-sdk`](https://www.npmjs.com/package/@nekosuneprojects/vector-sdk).
-The bot is a Nostr key (`VECTOR_PRIVATE_KEY`, nsec or hex). Vector has no server
-channels, so a `channelId` is either:
+Requires 1.2.0+. The bot is a Nostr key, found in this order:
+
+1. the account file (`accountFile`, default `vector-bot-account.json`; create one
+   with `npx vector-bot create`)
+2. the `tokenEnv` variable, then `VECTOR_NSEC` / `VECTOR_PRIVATE_KEY` /
+   `NOSTR_PRIVATE_KEY` / `NSEC` (nsec or hex)
+3. a seed phrase in `VECTOR_MNEMONIC` / `NOSTR_MNEMONIC`
+4. with `"createAccount": true`, a new key is generated and saved to the account
+   file on first run (don't use this in Docker unless that file is on a volume,
+   or the bot gets a new identity on every rebuild)
+
+The account file is gitignored. Vector has no server channels, so a `channelId`
+is either:
 
 - an `npub…` or hex pubkey: relays with that user over private DMs
 - `group:<groupId>`: a Vector MLS group. Set `VECTOR_MLS_SIDECAR_BIN` to the

@@ -30,17 +30,35 @@ class VectorAdapter extends BaseAdapter {
     return relays.map(relay => relay.trim()).filter(Boolean);
   }
 
-  async connect() {
-    const privateKey = process.env[this.definition.tokenEnv];
+  // Account file first, then tokenEnv / the SDK's default key and seed-phrase
+  // env vars; with createAccount a fresh key is minted and saved on first run.
+  async resolveAccount(sdk) {
+    const envVars = [
+      ...(this.definition.tokenEnv ? [this.definition.tokenEnv] : []),
+      ...sdk.DEFAULT_KEY_ENV_VARS,
+    ];
 
-    if (!privateKey) {
-      throw new Error(
-        `${this.displayName}: environment variable ${this.definition.tokenEnv} is missing`
-      );
+    try {
+      return await sdk.resolveAccount({
+        file: this.definition.accountFile,
+        envVars,
+        create: Boolean(this.definition.createAccount),
+      });
+    } catch (error) {
+      throw new Error(`${this.displayName}: ${error.message}`);
     }
+  }
 
+  async connect() {
     const sdk = await import('@nekosuneprojects/vector-sdk');
     ({ nip19: this.nip19 } = await import('nostr-tools'));
+
+    const { account, source, filePath, envVar } = await this.resolveAccount(sdk);
+
+    console.log(
+      `[${this.displayName}] Using account ${account.npub} from ` +
+      (source === 'env' ? envVar : `${source} ${filePath}`)
+    );
 
     const mlsSidecarBin = this.definition.mlsSidecarBinEnv
       ? process.env[this.definition.mlsSidecarBinEnv]
@@ -56,7 +74,7 @@ class VectorAdapter extends BaseAdapter {
     this.hasGroupTransport = Boolean(mlsAdapter);
 
     this.client = new sdk.VectorBotClient({
-      privateKey,
+      privateKey: account.privateKey,
       relays: this.getRelays(),
       profile: this.definition.profile,
       mlsAdapter,
