@@ -71,8 +71,12 @@ class RelayEngine {
     );
   }
 
+  // Returns { content, files }: attachments that came as downloaded bytes
+  // (Vector's are end-to-end encrypted, so a link is useless elsewhere) are
+  // handed to the target to upload; ones with a public URL stay links.
   formatMessage(message, sourceAdapter, relayGroup) {
     const body = [];
+    const files = [];
 
     if (message.content?.trim()) {
       body.push(this.cleanText(message.content.trim()));
@@ -80,13 +84,17 @@ class RelayEngine {
 
     if (this.options.relayAttachments && message.attachments?.length) {
       for (const attachment of message.attachments) {
-        if (attachment.url) {
+        if (attachment.data) {
+          files.push(attachment);
+        } else if (attachment.url) {
           body.push(attachment.url);
+        } else if (attachment.note) {
+          body.push(attachment.note);
         }
       }
     }
 
-    if (!body.length) {
+    if (!body.length && !files.length) {
       return null;
     }
 
@@ -104,7 +112,10 @@ class RelayEngine {
       ? `${prefixParts.join(' ')} `
       : '';
 
-    return `${prefix}**${this.cleanText(message.author.displayName)}:** ${body.join('\n')}`;
+    return {
+      content: `${prefix}**${this.cleanText(message.author.displayName)}:** ${body.join('\n')}`.trimEnd(),
+      files,
+    };
   }
 
   async handleIncoming(platformId, rawMessage) {
@@ -131,17 +142,26 @@ class RelayEngine {
     const groups = this.getGroupsForChannel(platformId, message.channelId);
 
     for (const relayGroup of groups) {
-      const content = this.formatMessage(
+      const formatted = this.formatMessage(
         message,
         sourceAdapter,
         relayGroup
       );
 
-      if (!content) {
+      if (!formatted) {
         continue;
       }
 
-      for (const target of relayGroup.channels) {
+      // With files, send to the best uploaders first: the copy they host is
+      // then linked for targets that can't upload (e.g. a JSON-only webhook).
+      const targets = [...relayGroup.channels];
+      if (formatted.files.length) {
+        const support = target => this.adapters.get(target.platform)?.fileUploadSupport(target.channelId) ?? 0;
+        targets.sort((a, b) => support(b) - support(a));
+      }
+      let fileUrls;
+
+      for (const target of targets) {
         if (this.isSameChannel(target, platformId, message.channelId)) {
           continue;
         }
@@ -157,7 +177,9 @@ class RelayEngine {
 
         try {
           const sent = await targetAdapter.sendMessage(target.channelId, {
-            content: content.slice(0, 2000),
+            content: formatted.content.slice(0, 2000),
+            files: formatted.files,
+            fileUrls,
             source: {
               platformId,
               platformName: sourceAdapter.displayName,
@@ -169,6 +191,13 @@ class RelayEngine {
           });
 
           this.rememberMessage(sent?.id);
+
+          if (formatted.files.length && !fileUrls) {
+            const hosted = targetAdapter.hostedFileUrls(sent);
+            if (hosted.length === formatted.files.length) {
+              fileUrls = hosted;
+            }
+          }
 
           console.log(
             `[relay:${relayGroup.id}] ` +

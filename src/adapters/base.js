@@ -34,6 +34,33 @@ class BaseAdapter {
     throw new Error(`sendMessage() not implemented for ${this.type}`);
   }
 
+  // How well this target takes file uploads: 2 = reliably, 1 = maybe (not yet
+  // known), 0 = can't. The engine sends to better uploaders first, so their
+  // hosted copies can be linked for the rest.
+  fileUploadSupport(_channelId) {
+    return 0;
+  }
+
+  // Public URLs of the files a sent message carries, when this platform hosts them.
+  hostedFileUrls(_sent) {
+    return [];
+  }
+
+  // For targets that can't upload files: link each file when another platform
+  // already hosts a copy (payload.fileUrls), or name it in the text.
+  withFileNotes(payload) {
+    if (!payload.files?.length) {
+      return payload.content;
+    }
+
+    const notes = payload.files.map((file, index) =>
+      payload.fileUrls?.[index] ||
+      `[${file.contentType?.startsWith('image/') ? 'image' : 'file'}: ${file.name}]`
+    );
+
+    return [payload.content, ...notes].join('\n');
+  }
+
   normalizeChannelId(channelId) {
     return String(channelId);
   }

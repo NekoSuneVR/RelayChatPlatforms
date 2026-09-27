@@ -23,12 +23,14 @@
       "displayName": "Vector",
       "tokenEnv": "VECTOR_PRIVATE_KEY",
       "relaysEnv": "VECTOR_RELAYS",
-      "mlsSidecarBinEnv": "VECTOR_MLS_SIDECAR_BIN",
       "profile": {
         "name": "relaybot",
         "displayName": "Relay Bot",
         "about": "Multi-platform chat relay"
-      }
+      },
+      "acceptInvitesFrom": [
+        "npub1...your-npub"
+      ]
     },
     "rootapp-main": {
       "type": "rootapp",
@@ -54,7 +56,7 @@
         },
         {
           "platform": "vector-main",
-          "channelId": "group:VECTOR_GROUP_ID_HERE"
+          "channelId": "community:VECTOR_COMMUNITY_ID_HERE/general"
         },
         {
           "platform": "rootapp-main",

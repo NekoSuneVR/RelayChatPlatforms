@@ -41,7 +41,7 @@ platform definition to use a self-hosted instance.
 ### Vector
 
 Uses [`@nekosuneprojects/vector-sdk`](https://www.npmjs.com/package/@nekosuneprojects/vector-sdk).
-Requires 1.2.0+. The bot is a Nostr key, found in this order:
+Requires 1.2.0+ (1.4.0+ for communities). The bot is a Nostr key, found in this order:
 
 1. the account file (`accountFile`, default `vector-bot-account.json`; create one
    with `npx vector-bot create`)
@@ -52,12 +52,13 @@ Requires 1.2.0+. The bot is a Nostr key, found in this order:
    file on first run (don't use this in Docker unless that file is on a volume,
    or the bot gets a new identity on every rebuild)
 
-The account file is gitignored. Vector has no server channels, so a `channelId`
-is either:
+The account file is gitignored. A Vector `channelId` is one of:
 
+- `community:<communityId>/<channel>`: a channel in a Vector community, where
+  `<channel>` is the channel's name (`general`) or id. Needs SDK 1.4.0+.
 - an `npub…` or hex pubkey: relays with that user over private DMs
-- `group:<groupId>`: a Vector MLS group. Set `VECTOR_MLS_SIDECAR_BIN` to the
-  compiled MLS sidecar (`mlsSidecarBinEnv` in the definition), or group sends fail
+- `group:<groupId>`: a legacy Vector MLS group. Set `VECTOR_MLS_SIDECAR_BIN` to
+  the compiled MLS sidecar (`mlsSidecarBinEnv` in the definition)
 
 ```json
 "vector-main": {
@@ -65,12 +66,31 @@ is either:
   "displayName": "Vector",
   "tokenEnv": "VECTOR_PRIVATE_KEY",
   "relaysEnv": "VECTOR_RELAYS",
-  "mlsSidecarBinEnv": "VECTOR_MLS_SIDECAR_BIN",
+  "acceptInvitesFrom": ["npub1...your-npub"],
   "profile": { "name": "relaybot", "displayName": "Relay Bot" }
 }
 ```
 
-Vector attachments are end-to-end encrypted, so their URLs are not relayed.
+#### Adding the bot to a Vector community
+
+1. Put your npub in `acceptInvitesFrom`. Invites from anyone else are logged
+   and left waiting, the way Vector itself asks for consent.
+2. In Vector, invite the bot's npub to the community (it's printed at startup).
+3. The bot accepts, announces its join once, and logs each channel it can use:
+   `Community channel available: community:<id>/general`. Copy that into
+   `relays.json`.
+
+The community's keys are kept in `vector-bot-communities.json` (gitignored;
+treat it like the account key). Not supported yet: channels created after the
+invite, the community banlist, and key rotations (after a ban, the bot needs a
+fresh invite).
+
+Vector attachments (screenshots, GIFs, files) are end-to-end encrypted, so the
+bot downloads and decrypts them and uploads the file itself to Discord, GameVox
+(bot or webhook) and Stoat. Files over `maxAttachmentBytes` (default 10 MB,
+Discord's bot limit) are named in the text instead. Sending files *into*
+Vector isn't supported yet: those show as `[image: name]`, and files with a
+public link (Discord's) arrive as that link.
 
 ### Root
 

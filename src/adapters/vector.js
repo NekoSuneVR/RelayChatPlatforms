@@ -14,6 +14,8 @@ const KEY_ENV_VARS = [
   'NOSTR_MNEMONIC',
 ];
 const DEFAULT_RELAYS = ['wss://jskitty.cat/nostr', 'wss://relay.damus.io'];
+// Discord's upload limit for bots; bigger files are named in the text instead.
+const DEFAULT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 // A relay "channel" on Vector is one of:
 //   - "community:<communityId>/<channel>" -> a channel in a Vector community,
@@ -334,12 +336,16 @@ class VectorAdapter extends BaseAdapter {
   async sendMessage(channelId, payload) {
     const channel = await this.getChannel(channelId);
 
+    // Uploading to Vector (encrypt + Blossom) isn't supported yet; files that
+    // arrive with a public URL were already turned into links by the engine.
+    const content = this.withFileNotes(payload);
+
     if (channel.type === 'community') {
-      return this.client.sendCommunityMessage(channel.communityId, channel.channelId, payload.content);
+      return this.client.sendCommunityMessage(channel.communityId, channel.channelId, content);
     }
 
     if (channel.type === 'group') {
-      const sent = await this.client.sendGroupMessage(channel.id, payload.content);
+      const sent = await this.client.sendGroupMessage(channel.id, content);
 
       if (!sent) {
         throw new Error(`${this.displayName}: group send to ${channel.id} failed`);
@@ -348,7 +354,7 @@ class VectorAdapter extends BaseAdapter {
       return { id: null };
     }
 
-    return this.client.send(channel.id, payload.content);
+    return this.client.send(channel.id, content);
   }
 
   isOwnMessage(message) {
@@ -405,6 +411,26 @@ class VectorAdapter extends BaseAdapter {
     };
   }
 
+  // Vector attachments are end-to-end encrypted, so the bot downloads and
+  // decrypts them and the other platforms get the file itself.
+  async downloadCommunityAttachments(message) {
+    const { concord } = await import('@nekosuneprojects/vector-sdk');
+    const maxBytes = this.definition.maxAttachmentBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
+
+    return Promise.all(
+      (message.attachments || []).map(async (attachment, index) => {
+        const name = concord.attachmentFilename(attachment, index);
+        try {
+          const data = await message.download(attachment, { maxBytes });
+          return { name, contentType: attachment.mimeType, data };
+        } catch (error) {
+          console.warn(`[${this.displayName}] could not fetch attachment ${name}: ${error.message}`);
+          return { name, note: `[attachment: ${name} (${/limit/.test(error.message) ? 'too large' : 'unavailable'})]` };
+        }
+      })
+    );
+  }
+
   async normalizeCommunityMessage(message) {
     const npub = this.nip19.npubEncode(message.author);
 
@@ -419,7 +445,7 @@ class VectorAdapter extends BaseAdapter {
         isBot: false,
       },
       content: message.content || '',
-      attachments: [],
+      attachments: await this.downloadCommunityAttachments(message),
       webhookId: null,
       raw: message,
     };

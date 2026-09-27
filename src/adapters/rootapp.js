@@ -66,7 +66,7 @@ class RootAppAdapter extends BaseAdapter {
   async sendMessage(channelId, payload) {
     const message = await this.sdk.rootServer.community.channelMessages.create({
       channelId,
-      content: payload.content,
+      content: this.withFileNotes(payload),
     });
 
     this.botUserId = message.userId;

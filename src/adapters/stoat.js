@@ -65,10 +65,33 @@ class StoatAdapter extends BaseAdapter {
     return channel;
   }
 
+  fileUploadSupport() {
+    return 2;
+  }
+
+  hostedFileUrls(sent) {
+    return (sent?.attachments || []).map(file => file.originalUrl).filter(Boolean);
+  }
+
   async sendMessage(channelId, payload) {
     const channel = await this.getChannel(channelId);
+    const attachments = [];
+    let content = payload.content;
 
-    return channel.sendMessage({ content: payload.content });
+    for (const file of payload.files || []) {
+      try {
+        const upload = new File([file.data], file.name, { type: file.contentType || 'application/octet-stream' });
+        attachments.push(await this.client.uploadFile('attachments', upload));
+      } catch (error) {
+        console.warn(`[${this.displayName}] could not upload ${file.name}: ${error.message}`);
+        content += `\n[file: ${file.name}]`;
+      }
+    }
+
+    return channel.sendMessage({
+      content,
+      ...(attachments.length ? { attachments } : {}),
+    });
   }
 
   isOwnMessage(message) {
