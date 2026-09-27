@@ -1,0 +1,37 @@
+{
+  "platforms": {
+    "discord-main": {
+      "type": "discord",
+      "displayName": "Discord",
+      "tokenEnv": "DISCORD_BOT_TOKEN"
+    },
+    "gamevox-main": {
+      "type": "gamevox",
+      "displayName": "GameVox",
+      "tokenEnv": "GAMEVOX_BOT_TOKEN"
+    }
+  },
+  "relayGroups": [
+    {
+      "id": "community-chat",
+      "name": "Community Chat",
+      "channels": [
+        {
+          "platform": "discord-main",
+          "channelId": "DISCORD_CHANNEL_ID_HERE"
+        },
+        {
+          "platform": "gamevox-main",
+          "channelId": "GAMEVOX_CHANNEL_ID_HERE"
+        }
+      ]
+    }
+  ],
+  "options": {
+    "relayAttachments": true,
+    "relayWebhookMessages": true,
+    "showPlatform": true,
+    "showRelayGroup": false,
+    "preventEveryoneMentions": true
+  }
+}

@@ -1,0 +1,7 @@
+services:
+  discord-gamevox-relay:
+    build: .
+    container_name: discord-gamevox-relay
+    restart: unless-stopped
+    env_file:
+      - .env
