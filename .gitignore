@@ -5,3 +5,4 @@ npm-debug.log*
 rootsdk.sqlite3
 .vector-mls-sidecar/
 vector-bot-account.json
+vector-bot-communities.json

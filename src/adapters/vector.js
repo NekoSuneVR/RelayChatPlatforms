@@ -1,11 +1,25 @@
+const fs = require('fs');
+
 const BaseAdapter = require('./base');
 
 const GROUP_PREFIX = 'group:';
+const COMMUNITY_PREFIX = 'community:';
+// The SDK's DEFAULT_KEY_ENV_VARS + DEFAULT_MNEMONIC_ENV_VARS.
+const KEY_ENV_VARS = [
+  'VECTOR_NSEC',
+  'VECTOR_PRIVATE_KEY',
+  'NOSTR_PRIVATE_KEY',
+  'NSEC',
+  'VECTOR_MNEMONIC',
+  'NOSTR_MNEMONIC',
+];
 const DEFAULT_RELAYS = ['wss://jskitty.cat/nostr', 'wss://relay.damus.io'];
 
-// Vector has no server channels. A relay "channel" is either:
-//   - a user's npub / hex pubkey  -> private DM with that user
-//   - "group:<groupId>"           -> Vector MLS group (needs the MLS sidecar)
+// A relay "channel" on Vector is one of:
+//   - "community:<communityId>/<channel>" -> a channel in a Vector community,
+//     <channel> being its id or name ("general")
+//   - a user's npub / hex pubkey          -> private DM with that user
+//   - "group:<groupId>"                   -> legacy MLS group (needs the sidecar)
 //
 // @nekosuneprojects/vector-sdk is ESM-only, so it is loaded with a dynamic import.
 class VectorAdapter extends BaseAdapter {
@@ -16,6 +30,17 @@ class VectorAdapter extends BaseAdapter {
     this.nip19 = null;
     this.hasGroupTransport = false;
     this.messageHandlers = [];
+    this.displayNames = new Map();
+  }
+
+  // Invites from these npubs/hex keys are accepted automatically; any other
+  // invite stays parked, the way Vector itself waits for consent.
+  getTrustedInviters() {
+    return new Set(
+      (this.definition.acceptInvitesFrom || []).map(key =>
+        String(key).startsWith('npub1') ? this.nip19.decode(key).data : String(key).toLowerCase()
+      )
+    );
   }
 
   getRelays() {
@@ -28,6 +53,31 @@ class VectorAdapter extends BaseAdapter {
       : this.definition.relays || DEFAULT_RELAYS;
 
     return relays.map(relay => relay.trim()).filter(Boolean);
+  }
+
+  // Mirrors the sources resolveAccount() checks, without loading the ESM SDK.
+  getDisabledReason() {
+    if (this.definition.createAccount) {
+      return null;
+    }
+
+    const accountFile =
+      this.definition.accountFile ||
+      process.env.VECTOR_ACCOUNT_FILE ||
+      'vector-bot-account.json';
+
+    const envVars = [
+      ...new Set([this.definition.tokenEnv, ...KEY_ENV_VARS].filter(Boolean)),
+    ];
+
+    if (
+      fs.existsSync(accountFile) ||
+      envVars.some(name => process.env[name]?.trim())
+    ) {
+      return null;
+    }
+
+    return `no account file and ${envVars.join(' / ')} are blank`;
   }
 
   // Account file first, then tokenEnv / the SDK's default key and seed-phrase
@@ -79,6 +129,8 @@ class VectorAdapter extends BaseAdapter {
       profile: this.definition.profile,
       mlsAdapter,
       autoDiscoverGroups: Boolean(mlsAdapter),
+      discoverGroupsFromHistory: Boolean(mlsAdapter),
+      communitiesFile: this.definition.communitiesFile,
       debug: process.env.DEBUG === '1',
     });
 
@@ -88,17 +140,115 @@ class VectorAdapter extends BaseAdapter {
       }
     });
 
+    this.client.on('community_message', message => {
+      for (const handler of this.messageHandlers) {
+        handler({ community: message });
+      }
+    });
+
+    const trustedInviters = this.getTrustedInviters();
+    this.client.on('invite', received => {
+      const { invite, senderPubkey, expired } = received;
+      const label = `${invite.name || invite.communityId} from ${this.nip19.npubEncode(senderPubkey)}`;
+
+      if (expired || !trustedInviters.has(senderPubkey)) {
+        console.log(
+          `[${this.displayName}] Community invite to ${label} ${expired ? 'has expired' : 'is waiting (sender not in acceptInvitesFrom)'}`
+        );
+        return;
+      }
+
+      this.client.acceptInvite(invite.communityId).then(
+        () => console.log(`[${this.displayName}] Accepted community invite to ${label}`),
+        error => console.warn(`[${this.displayName}] Could not accept invite to ${label}: ${error.message}`)
+      );
+    });
+
+    this.client.on('community_joined', community => this.logCommunityChannels(community.communityId));
+    this.client.on('community_announced', ({ communityName }) => {
+      console.log(`[${this.displayName}] Joined ${communityName}; members can now see the bot`);
+    });
+
     this.client.on('error', error => {
       console.error(`[${this.displayName}] client error`, error);
     });
 
+    // Logged so the group ID can be copied into relays.json as "group:<id>".
+    const seenGroups = new Set();
+    this.client.on('group_discovered', ({ groupId, source }) => {
+      if (seenGroups.has(groupId)) return;
+      seenGroups.add(groupId);
+      console.log(
+        `[${this.displayName}] Group available: group:${groupId} (via ${source})`
+      );
+    });
+
+    // Group invites (MLS welcomes) are accepted automatically by the SDK when
+    // the sidecar is configured; these make that visible.
+    // Vector can only invite the bot to a group once this is published.
+    this.client.on('mls_keypackage', ({ published }) => {
+      console.log(
+        `[${this.displayName}] Group key package ${published ? 'published' : 'already published'}; the bot can be invited to groups`
+      );
+    });
+
+    this.client.on('mls_welcome_processed', ({ groupId }) => {
+      console.log(
+        `[${this.displayName}] Accepted group invite${groupId ? `: group:${groupId}` : ''}`
+      );
+    });
+
+    this.client.on('mls_welcome_process_failed', ({ error }) => {
+      console.warn(`[${this.displayName}] Could not accept group invite: ${error}`);
+    });
+
     const ready = new Promise(resolve => this.client.once('ready', resolve));
     await this.client.connect();
-    const { pubkey } = await ready;
+    const { pubkey, knownGroupIds = [] } = await ready;
 
     console.log(
-      `[${this.displayName}] Online as ${this.nip19.npubEncode(pubkey)}`
+      `[${this.displayName}] Online as ${this.nip19.npubEncode(pubkey)}` +
+      (mlsAdapter ? ` in ${knownGroupIds.length} group(s)` : ' (DMs only; no MLS sidecar)')
     );
+
+    for (const groupId of knownGroupIds) {
+      if (seenGroups.has(groupId)) continue;
+      seenGroups.add(groupId);
+      console.log(`[${this.displayName}] Group available: group:${groupId}`);
+    }
+
+    this.logCommunityChannels();
+  }
+
+  // Logged so the channel can be copied into relays.json.
+  logCommunityChannels(communityId) {
+    for (const channel of this.client.getCommunityChannels(communityId)) {
+      console.log(
+        `[${this.displayName}] Community channel available: ` +
+        `${COMMUNITY_PREFIX}${channel.communityId}/${channel.name || channel.id}`
+      );
+    }
+  }
+
+  parseCommunityChannel(id) {
+    const [communityId, channel] = id.slice(COMMUNITY_PREFIX.length).split('/');
+
+    if (!communityId || !channel) {
+      throw new Error(
+        `${this.displayName}: ${id} should look like community:<communityId>/<channel id or name>`
+      );
+    }
+
+    return { communityId: communityId.toLowerCase(), channel };
+  }
+
+  findCommunityChannel(id) {
+    const { communityId, channel } = this.parseCommunityChannel(id);
+    const wanted = channel.replace(/^#/, '').toLowerCase();
+
+    return this.client
+      ?.getCommunityChannels(communityId)
+      .find(c => c.id === wanted || c.name?.toLowerCase() === wanted);
   }
 
   onMessage(handler) {
@@ -108,6 +258,16 @@ class VectorAdapter extends BaseAdapter {
   // Config may use npub or hex; incoming DMs carry hex pubkeys.
   normalizeChannelId(channelId) {
     const id = String(channelId).trim();
+
+    // Configs may name a community channel; incoming messages carry its id.
+    if (id.startsWith(COMMUNITY_PREFIX)) {
+      try {
+        const channel = this.findCommunityChannel(id);
+        return channel ? `${COMMUNITY_PREFIX}${channel.communityId}/${channel.id}` : id.toLowerCase();
+      } catch {
+        return id.toLowerCase();
+      }
+    }
 
     if (id.startsWith(GROUP_PREFIX) || !this.nip19) {
       return id;
@@ -123,6 +283,23 @@ class VectorAdapter extends BaseAdapter {
   async getChannel(channelId) {
     const id = this.normalizeChannelId(channelId);
 
+    if (id.startsWith(COMMUNITY_PREFIX)) {
+      const { communityId, channel } = this.parseCommunityChannel(id);
+      const found = this.findCommunityChannel(id);
+
+      if (!found) {
+        const available = this.client.getCommunityChannels(communityId);
+        throw new Error(
+          `${this.displayName}: no channel "${channel}" in community ${communityId}. ` +
+          (available.length
+            ? `Available: ${available.map(c => c.name || c.id).join(', ')}`
+            : 'The bot is not in that community; invite it from Vector (see acceptInvitesFrom)')
+        );
+      }
+
+      return { type: 'community', communityId: found.communityId, channelId: found.id };
+    }
+
     if (id.startsWith(GROUP_PREFIX)) {
       if (!this.hasGroupTransport) {
         throw new Error(
@@ -131,7 +308,18 @@ class VectorAdapter extends BaseAdapter {
         );
       }
 
-      return { type: 'group', id: id.slice(GROUP_PREFIX.length) };
+      const groupId = id.slice(GROUP_PREFIX.length);
+      const knownGroups = this.client?.getKnownGroupIds() || [];
+
+      if (!knownGroups.includes(groupId)) {
+        throw new Error(
+          `${this.displayName}: the bot is not in group ${groupId}. ` +
+          'Invite the bot to the group in Vector, restart, and use an ID from the "Group available" log lines' +
+          (knownGroups.length ? ` (known: ${knownGroups.map(g => `group:${g}`).join(', ')})` : '')
+        );
+      }
+
+      return { type: 'group', id: groupId };
     }
 
     if (!/^[0-9a-f]{64}$/.test(id)) {
@@ -145,6 +333,10 @@ class VectorAdapter extends BaseAdapter {
 
   async sendMessage(channelId, payload) {
     const channel = await this.getChannel(channelId);
+
+    if (channel.type === 'community') {
+      return this.client.sendCommunityMessage(channel.communityId, channel.channelId, payload.content);
+    }
 
     if (channel.type === 'group') {
       const sent = await this.client.sendGroupMessage(channel.id, payload.content);
@@ -160,10 +352,26 @@ class VectorAdapter extends BaseAdapter {
   }
 
   isOwnMessage(message) {
+    // The SDK never emits the bot's own community messages.
     return Boolean(message?.self);
   }
 
-  normalizeMessage({ pubkey, tags, content }) {
+  // Profile names are cached; a lookup that fails falls back to a short npub.
+  async resolveDisplayName(pubkey) {
+    if (!this.displayNames.has(pubkey)) {
+      const name = await this.client.fetchUser(pubkey).then(user => user.displayName, () => null);
+      this.displayNames.set(pubkey, name || `${this.nip19.npubEncode(pubkey).slice(0, 12)}…`);
+    }
+
+    return this.displayNames.get(pubkey);
+  }
+
+  async normalizeMessage(message) {
+    if (message.community) {
+      return this.normalizeCommunityMessage(message.community);
+    }
+
+    const { pubkey, tags, content } = message;
     const attachments = [];
 
     // Vector attachments are AES-GCM encrypted by default; the URL is useless
@@ -194,6 +402,26 @@ class VectorAdapter extends BaseAdapter {
       attachments,
       webhookId: null,
       raw: { pubkey, tags, content },
+    };
+  }
+
+  async normalizeCommunityMessage(message) {
+    const npub = this.nip19.npubEncode(message.author);
+
+    return {
+      id: message.id,
+      channelId: `${COMMUNITY_PREFIX}${message.communityId}/${message.channelId}`,
+      author: {
+        id: message.author,
+        username: npub,
+        displayName: await this.resolveDisplayName(message.author),
+        avatarUrl: null,
+        isBot: false,
+      },
+      content: message.content || '',
+      attachments: [],
+      webhookId: null,
+      raw: message,
     };
   }
 

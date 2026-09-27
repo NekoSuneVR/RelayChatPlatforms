@@ -15,13 +15,16 @@ class RootAppAdapter extends BaseAdapter {
     this.messageHandlers = [];
   }
 
-  async connect() {
+  // COMMUNITY_ID is injected by Root's host, so it's blank under plain `npm start`.
+  getDisabledReason() {
     if (!process.env.COMMUNITY_ID && !process.env.MULTI_COMMUNITY) {
-      throw new Error(
-        `${this.displayName}: not running under Root's host. ` +
-        'Start the relay with "npm run root:dev" (DEV_TOKEN in .env) or deploy it to Root.'
-      );
+      return 'not running under Root\'s host (use "npm run root:dev" with DEV_TOKEN in .env)';
     }
+
+    return null;
+  }
+
+  async connect() {
 
     // Required lazily: the SDK calls process.exit() at load time when
     // COMMUNITY_ID is missing, which would kill non-Root deployments.

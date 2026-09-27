@@ -32,8 +32,40 @@ if (!Array.isArray(config.relayGroups) || !config.relayGroups.length) {
 
 const adapters = new Map();
 
+const disabledPlatforms = new Set();
+
 for (const [id, definition] of Object.entries(config.platforms)) {
-  adapters.set(id, createAdapter(id, definition));
+  const adapter = createAdapter(id, definition);
+  const reason =
+    definition.enabled === false
+      ? '"enabled": false in config'
+      : adapter.getDisabledReason();
+
+  if (reason) {
+    disabledPlatforms.add(id);
+    console.log(`[config] ${adapter.displayName} (${id}) disabled: ${reason}`);
+    continue;
+  }
+
+  adapters.set(id, adapter);
+}
+
+if (!adapters.size) {
+  console.error('No platforms are enabled; fill in at least one token in .env');
+  process.exit(1);
+}
+
+// Channels on disabled platforms are dropped so they don't show up as errors.
+for (const group of config.relayGroups) {
+  group.channels = (group.channels || []).filter(
+    entry => !disabledPlatforms.has(entry.platform)
+  );
+
+  if (group.channels.length < 2) {
+    console.warn(
+      `[config] Relay group "${group.id}" has fewer than 2 enabled channels; nothing to relay`
+    );
+  }
 }
 
 const relayEngine = new RelayEngine(config, adapters);
@@ -57,19 +89,35 @@ async function validateConfiguredChannels() {
           `[config] ${group.id}: ${adapter.displayName} channel ${entry.channelId} ready`
         );
       } catch (error) {
+        entry.failed = true;
         console.error(
-          `[config] ${group.id}: ${adapter.displayName} channel ${entry.channelId} failed:`,
-          error.message
+          `[config] ${group.id}: ${adapter.displayName} channel ${entry.channelId} ` +
+          `failed and is skipped until restart: ${error.message}`
         );
       }
     }
+
+    // A channel that failed validation would error on every relayed message.
+    group.channels = group.channels.filter(entry => !entry.failed);
   }
 }
 
 async function start() {
   try {
     for (const adapter of adapters.values()) {
-      await adapter.connect();
+      try {
+        await adapter.connect();
+      } catch (error) {
+        if (/disallowed intents/i.test(error.message)) {
+          error.message =
+            `${adapter.displayName}: ${error.message}. Enable "Message Content Intent" ` +
+            "under Privileged Gateway Intents in this bot's developer portal settings.";
+        } else if (!error.message.startsWith(`${adapter.displayName}:`)) {
+          error.message = `${adapter.displayName}: ${error.message}`;
+        }
+
+        throw error;
+      }
     }
 
     await validateConfiguredChannels();

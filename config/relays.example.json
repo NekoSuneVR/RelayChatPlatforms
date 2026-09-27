@@ -8,7 +8,10 @@
     "gamevox-main": {
       "type": "gamevox",
       "displayName": "GameVox",
-      "tokenEnv": "GAMEVOX_BOT_TOKEN"
+      "tokenEnv": "GAMEVOX_BOT_TOKEN",
+      "webhookEnvs": {
+        "GAMEVOX_CHANNEL_ID_HERE": "GAMEVOX_WEBHOOK_URL"
+      }
     },
     "stoat-main": {
       "type": "stoat",

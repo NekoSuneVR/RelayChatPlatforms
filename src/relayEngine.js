@@ -1,3 +1,18 @@
+// Known API errors get a one-line hint; anything unexpected keeps its stack.
+function describeError(error) {
+  const hints = {
+    10003: 'unknown channel; check the channelId in relays.json',
+    50001: 'bot cannot see this channel; give its role View Channel',
+    50013: 'bot lacks permission here; give its role View Channel, Send Messages and Read Message History',
+  };
+
+  if (hints[error?.code]) {
+    return `${error.message} (${hints[error.code]})`;
+  }
+
+  return error?.stack || String(error);
+}
+
 class RelayEngine {
   constructor(config, adapters) {
     this.config = config;
@@ -163,8 +178,8 @@ class RelayEngine {
         } catch (error) {
           console.error(
             `[relay:${relayGroup.id}] ` +
-            `${sourceAdapter.displayName} -> ${targetAdapter.displayName} failed`,
-            error
+            `${sourceAdapter.displayName} -> ${targetAdapter.displayName} ` +
+            `(channel ${target.channelId}) failed: ${describeError(error)}`
           );
         }
       }

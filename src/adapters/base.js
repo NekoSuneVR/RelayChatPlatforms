@@ -6,6 +6,18 @@ class BaseAdapter {
     this.displayName = definition.displayName || definition.type;
   }
 
+  // Returns why this platform can't run with the current environment, or null.
+  // Checked before connect(); a disabled platform is skipped, not fatal.
+  getDisabledReason() {
+    const { tokenEnv } = this.definition;
+
+    if (tokenEnv && !process.env[tokenEnv]?.trim()) {
+      return `${tokenEnv} is blank`;
+    }
+
+    return null;
+  }
+
   async connect() {
     throw new Error(`connect() not implemented for ${this.type}`);
   }

@@ -95,6 +95,28 @@ configured fails at startup with a message explaining this.
 Bot permissions (`createMessage`, `viewMessageHistory`) are declared in
 `root-manifest.json`.
 
+### Sending through a webhook (GameVox workaround)
+
+GameVox currently refuses bots on channel endpoints (`403 Missing Permissions`)
+even when the bot has admin, so direct sends fail. A channel webhook avoids this:
+
+1. GameVox developer portal -> your application -> **Webhooks** -> **New Webhook**,
+   pick the relay channel, copy the URL.
+2. Put it in `.env`: `GAMEVOX_WEBHOOK_URL=https://api.gamevox.com/webhooks/...`
+3. Map the channel to that variable on the platform:
+
+```json
+"gamevox-main": {
+  "type": "gamevox",
+  "displayName": "GameVox",
+  "tokenEnv": "GAMEVOX_BOT_TOKEN",
+  "webhookEnvs": { "1553735658507157504": "GAMEVOX_WEBHOOK_URL" }
+}
+```
+
+Webhook posts appear as the bot, so they are not relayed back. The same option
+works for Discord channels.
+
 ## Example relayed messages
 
 A Discord message:
@@ -181,6 +203,21 @@ Adapters can also implement `normalizeChannelId()` when one channel has several
 spellings (Vector accepts both `npub…` and hex).
 
 ---
+
+# Disabling platforms
+
+A platform is skipped (not fatal) when its credentials are blank, so you can
+keep every platform in `relays.json` and turn them on by filling in `.env`:
+
+| Platform | Disabled when |
+| --- | --- |
+| Discord / GameVox / Stoat | its `tokenEnv` is blank |
+| Vector | no account file, and every key/seed env var is blank (unless `createAccount`) |
+| Root | not launched by Root's host (`npm run root:dev` or Root cloud) |
+
+Set `"enabled": false` on a platform to turn it off regardless. Channels on a
+disabled platform are removed from their relay groups at startup, and startup
+logs which platforms were skipped and why.
 
 # Platform definitions
 
