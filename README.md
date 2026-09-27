@@ -92,6 +92,44 @@ Discord's bot limit) are named in the text instead. Sending files *into*
 Vector isn't supported yet: those show as `[image: name]`, and files with a
 public link (Discord's) arrive as that link.
 
+### Matrix
+
+Uses [`matrix-bot-sdk`](https://github.com/turt2live/matrix-bot-sdk), with
+end-to-end encryption on (Element encrypts private rooms by default). A Matrix
+channel is a **room**: `channelId` is its id (`!abc:server`) or an alias
+(`#general:server`). A Discord-style server is a Matrix **Space**; each of its
+rooms is relayed separately, so add one entry per room.
+
+```json
+"matrix-main": {
+  "type": "matrix",
+  "displayName": "Matrix",
+  "homeserverUrl": "https://matrix.nekosunevr.co.uk",
+  "tokenEnv": "MATRIX_ACCESS_TOKEN",
+  "userEnv": "MATRIX_USER",
+  "passwordEnv": "MATRIX_PASSWORD",
+  "acceptInvitesFrom": ["@you:nekosunevr.co.uk"]
+}
+```
+
+Setup:
+
+1. Create a user for the bot on your homeserver (Element's sign-up, or
+   `register_new_matrix_user` on Synapse).
+2. Put its username and password in `.env` (`MATRIX_USER`, `MATRIX_PASSWORD`).
+   The first start logs in and saves the session to `matrix-bot-session.json`,
+   so later starts reuse the same device. Or set `MATRIX_ACCESS_TOKEN` instead.
+3. Invite the bot to each room. It joins invites from `acceptInvitesFrom`
+   (or from anyone when that's not set) and logs `Room available: !id (#alias, Name)`.
+4. Put the room id or alias in `relays.json`.
+
+Images and files are relayed both ways (decrypted/encrypted as the room
+requires). `matrix-bot-session.json`, `matrix-bot-storage.json` and
+`matrix-crypto/` hold the bot's login and encryption keys and are gitignored;
+keep `matrix-crypto/` between restarts, or the bot becomes a new device and
+can't read older encrypted messages. Set `"encryption": false` for
+unencrypted rooms only, and `"noticeMessages": true` to post as `m.notice`.
+
 ### Root
 
 Uses [`@rootsdk/server-bot`](https://docs.rootapp.com/docs/bot-docs/bot-home/).

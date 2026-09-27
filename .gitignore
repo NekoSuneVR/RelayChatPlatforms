@@ -6,3 +6,6 @@ rootsdk.sqlite3
 .vector-mls-sidecar/
 vector-bot-account.json
 vector-bot-communities.json
+matrix-bot-session.json
+matrix-bot-storage.json
+matrix-crypto/

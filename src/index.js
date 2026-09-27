@@ -104,20 +104,35 @@ async function validateConfiguredChannels() {
 
 async function start() {
   try {
-    for (const adapter of adapters.values()) {
+    // One platform failing to connect must not take the others down with it:
+    // it is dropped for this run and the rest keep relaying.
+    for (const [id, adapter] of [...adapters.entries()]) {
       try {
         await adapter.connect();
       } catch (error) {
-        if (/disallowed intents/i.test(error.message)) {
-          error.message =
-            `${adapter.displayName}: ${error.message}. Enable "Message Content Intent" ` +
+        let message = error.message;
+        if (/disallowed intents/i.test(message)) {
+          message +=
+            '. Enable "Message Content Intent" ' +
             "under Privileged Gateway Intents in this bot's developer portal settings.";
-        } else if (!error.message.startsWith(`${adapter.displayName}:`)) {
-          error.message = `${adapter.displayName}: ${error.message}`;
+        }
+        if (!message.startsWith(`${adapter.displayName}:`)) {
+          message = `${adapter.displayName}: ${message}`;
         }
 
-        throw error;
+        console.error(`[config] ${adapter.displayName} (${id}) failed to connect and is skipped until restart: ${message}`);
+        if (process.env.DEBUG === '1') console.error(error);
+
+        adapters.delete(id);
+        await adapter.destroy().catch(() => {});
+        for (const group of config.relayGroups) {
+          group.channels = group.channels.filter(entry => entry.platform !== id);
+        }
       }
+    }
+
+    if (!adapters.size) {
+      throw new Error('no platform could connect');
     }
 
     await validateConfiguredChannels();

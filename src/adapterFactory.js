@@ -1,5 +1,6 @@
 const DiscordAdapter = require('./adapters/discord');
 const GameVoxAdapter = require('./adapters/gamevox');
+const MatrixAdapter = require('./adapters/matrix');
 const RootAppAdapter = require('./adapters/rootapp');
 const StoatAdapter = require('./adapters/stoat');
 const VectorAdapter = require('./adapters/vector');
@@ -17,6 +18,9 @@ function createAdapter(id, definition) {
 
     case 'gamevox':
       return new GameVoxAdapter(fullDefinition);
+
+    case 'matrix':
+      return new MatrixAdapter(fullDefinition);
 
     case 'rootapp':
       return new RootAppAdapter(fullDefinition);

@@ -41,6 +41,12 @@ class StoatAdapter extends BaseAdapter {
     console.log(
       `[${this.displayName}] Logged in as ${this.client.user?.username || 'bot'}`
     );
+
+    // Stoat keeps a user's chosen presence; set it explicitly so the bot never
+    // sits as Invisible from an earlier setting.
+    await this.client.user
+      ?.edit({ status: { ...(this.client.user.status || {}), presence: 'Online' } })
+      .catch(error => console.warn(`[${this.displayName}] could not set presence: ${error.message}`));
   }
 
   onMessage(handler) {

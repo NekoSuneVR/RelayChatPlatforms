@@ -35,6 +35,14 @@
     "rootapp-main": {
       "type": "rootapp",
       "displayName": "Root"
+    },
+    "matrix-main": {
+      "type": "matrix",
+      "displayName": "Matrix",
+      "homeserverUrl": "https://matrix.nekosunevr.co.uk",
+      "tokenEnv": "MATRIX_ACCESS_TOKEN",
+      "userEnv": "MATRIX_USER",
+      "passwordEnv": "MATRIX_PASSWORD"
     }
   },
   "relayGroups": [
@@ -61,6 +69,10 @@
         {
           "platform": "rootapp-main",
           "channelId": "ROOT_CHANNEL_ID_HERE"
+        },
+        {
+          "platform": "matrix-main",
+          "channelId": "#general:matrix.nekosunevr.co.uk"
         }
       ]
     }

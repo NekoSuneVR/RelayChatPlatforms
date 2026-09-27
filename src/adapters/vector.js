@@ -222,9 +222,21 @@ class VectorAdapter extends BaseAdapter {
     this.logCommunityChannels();
   }
 
+  // Community support arrived in vector-sdk 1.3.1; an older SDK still does DMs.
+  communityChannels(communityId) {
+    return typeof this.client?.getCommunityChannels === 'function'
+      ? this.client.getCommunityChannels(communityId)
+      : [];
+  }
+
   // Logged so the channel can be copied into relays.json.
   logCommunityChannels(communityId) {
-    for (const channel of this.client.getCommunityChannels(communityId)) {
+    if (typeof this.client.getCommunityChannels !== 'function') {
+      console.warn(`[${this.displayName}] this vector-sdk has no community support; update it to use community:<id>/<channel>`);
+      return;
+    }
+
+    for (const channel of this.communityChannels(communityId)) {
       console.log(
         `[${this.displayName}] Community channel available: ` +
         `${COMMUNITY_PREFIX}${channel.communityId}/${channel.name || channel.id}`
@@ -248,8 +260,7 @@ class VectorAdapter extends BaseAdapter {
     const { communityId, channel } = this.parseCommunityChannel(id);
     const wanted = channel.replace(/^#/, '').toLowerCase();
 
-    return this.client
-      ?.getCommunityChannels(communityId)
+    return this.communityChannels(communityId)
       .find(c => c.id === wanted || c.name?.toLowerCase() === wanted);
   }
 
@@ -290,7 +301,7 @@ class VectorAdapter extends BaseAdapter {
       const found = this.findCommunityChannel(id);
 
       if (!found) {
-        const available = this.client.getCommunityChannels(communityId);
+        const available = this.communityChannels(communityId);
         throw new Error(
           `${this.displayName}: no channel "${channel}" in community ${communityId}. ` +
           (available.length
@@ -414,12 +425,17 @@ class VectorAdapter extends BaseAdapter {
   // Vector attachments are end-to-end encrypted, so the bot downloads and
   // decrypts them and the other platforms get the file itself.
   async downloadCommunityAttachments(message) {
+    // Attachment support needs a newer vector-sdk than community support did.
+    if (!message.attachments?.length || typeof message.download !== 'function') {
+      return [];
+    }
+
     const { concord } = await import('@nekosuneprojects/vector-sdk');
     const maxBytes = this.definition.maxAttachmentBytes ?? DEFAULT_MAX_ATTACHMENT_BYTES;
 
     return Promise.all(
       (message.attachments || []).map(async (attachment, index) => {
-        const name = concord.attachmentFilename(attachment, index);
+        const name = concord.attachmentFilename?.(attachment, index) || attachment.name || `attachment-${index + 1}`;
         try {
           const data = await message.download(attachment, { maxBytes });
           return { name, contentType: attachment.mimeType, data };

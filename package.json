@@ -13,10 +13,11 @@
     "node": ">=22.15"
   },
   "dependencies": {
-    "@nekosuneprojects/vector-sdk": "^1.3.0",
+    "@nekosuneprojects/vector-sdk": "^1.3.2",
     "@rootsdk/server-bot": "^0.21.3",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.2",
+    "matrix-bot-sdk": "^0.8.0",
     "stoat.js": "^7.3.6"
   },
   "devDependencies": {
