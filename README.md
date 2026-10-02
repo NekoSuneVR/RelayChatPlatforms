@@ -179,15 +179,20 @@ configured fails at startup with a message explaining this.
 Bot permissions (`createMessage`, `viewMessageHistory`) are declared in
 `root-manifest.json`.
 
-### Sending through a webhook (GameVox workaround)
+### GameVox webhook fallback
 
-GameVox currently refuses bots on channel endpoints (`403 Missing Permissions`)
-even when the bot has admin, so direct sends fail. A channel webhook avoids this:
+GameVox always uses the full bot integration first: gateway events, bot channel
+lookup and normal bot sends. A configured webhook is only a fallback for a send
+that fails with a permission/access error such as `403 Missing Permissions`.
+
+This means you can leave the webhook configured permanently. If GameVox restores
+normal bot channel permissions, the next message automatically goes through the
+bot API again and the webhook is not used.
 
 1. GameVox developer portal -> your application -> **Webhooks** -> **New Webhook**,
    pick the relay channel, copy the URL.
 2. Put it in `.env`: `GAMEVOX_WEBHOOK_URL=https://api.gamevox.com/webhooks/...`
-3. Map the channel to that variable on the platform:
+3. Map that webhook to the affected channel:
 
 ```json
 "gamevox-main": {
@@ -198,8 +203,10 @@ even when the bot has admin, so direct sends fail. A channel webhook avoids this
 }
 ```
 
-Webhook posts appear as the bot, so they are not relayed back. The same option
-works for Discord channels.
+The fallback is **not** used for general connection failures, invalid tokens,
+rate limits, server errors or other non-permission problems; those errors remain
+visible instead of being hidden by a webhook. Webhook posts are ignored by the
+relay loop prevention logic.
 
 ## Example relayed messages
 
