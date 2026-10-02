@@ -124,18 +124,34 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     // gateway MESSAGE_CREATE payload. Prefer whichever user/member object is
     // actually populated instead of assuming raw.author exists.
     const rawMember = raw?.member || raw?.guild_member || raw?.guildMember || null;
+
+    const objectCandidate = value =>
+      value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+
+    // Some GameVox REST payloads use "author"/"sender" as an ID rather than a
+    // full Discord User object. Do not let that primitive value hide member.user.
     const rawAuthor =
-      raw?.author ||
-      raw?.user ||
-      raw?.sender ||
-      rawMember?.user ||
-      rawMember?.author ||
+      objectCandidate(raw?.author) ||
+      objectCandidate(raw?.user) ||
+      objectCandidate(raw?.sender) ||
+      objectCandidate(rawMember?.user) ||
+      objectCandidate(rawMember?.author) ||
       {};
+
+    const primitiveAuthorId =
+      (typeof raw?.author === 'string' || typeof raw?.author === 'number')
+        ? raw.author
+        : (typeof raw?.sender === 'string' || typeof raw?.sender === 'number')
+          ? raw.sender
+          : null;
 
     const authorId =
       rawAuthor?.id ||
+      primitiveAuthorId ||
       raw?.author_id ||
       raw?.authorId ||
+      raw?.sender_id ||
+      raw?.senderId ||
       raw?.user_id ||
       raw?.userId ||
       rawMember?.user_id ||
@@ -167,6 +183,16 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       raw?.author_name ||
       raw?.authorName ||
       username;
+
+    if (username === 'Unknown User' && !this.loggedUnknownAuthorShape) {
+      this.loggedUnknownAuthorShape = true;
+      console.warn(
+        `[${this.displayName}] unknown REST author shape; message keys=` +
+          Object.keys(raw || {}).join(',') +
+          `; member keys=${Object.keys(rawMember || {}).join(',')}` +
+          `; author type=${typeof raw?.author}`
+      );
+    }
 
     const attachments = new Map(
       (Array.isArray(raw?.attachments) ? raw.attachments : []).map((file, index) => [
