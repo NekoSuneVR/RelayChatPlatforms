@@ -80,6 +80,96 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     }
   }
 
+  async fetchRawMessages(channelId, options = {}) {
+    const url = new URL(
+      `https://bot-api.gamevox.com/api/v10/channels/${encodeURIComponent(String(channelId))}/messages`
+    );
+
+    if (options.limit) url.searchParams.set('limit', String(options.limit));
+    if (options.after) url.searchParams.set('after', String(options.after));
+    if (options.before) url.searchParams.set('before', String(options.before));
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bot ${this.getToken()}`,
+        Accept: 'application/json',
+      },
+    });
+
+    const body = await response.text();
+    let data;
+
+    try {
+      data = body ? JSON.parse(body) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      const error = new Error(
+        data?.message ||
+        `GameVox message history returned ${response.status}: ${body.slice(0, 200)}`
+      );
+      error.status = response.status;
+      error.code = data?.code;
+      error.data = data;
+      throw error;
+    }
+
+    return Array.isArray(data) ? data : [];
+  }
+
+  rawMessageToRelayMessage(raw, channelId) {
+    const rawAuthor = raw?.author || raw?.member?.user || {};
+    const attachments = new Map(
+      (Array.isArray(raw?.attachments) ? raw.attachments : []).map((file, index) => [
+        String(file?.id || index),
+        {
+          id: file?.id || null,
+          name: file?.filename || file?.name || null,
+          url: file?.url || file?.proxy_url || file?.proxyUrl || null,
+          contentType: file?.content_type || file?.contentType || null,
+        },
+      ])
+    );
+
+    return {
+      id: String(raw?.id || ''),
+      channelId: String(raw?.channel_id || channelId),
+      guildId: raw?.guild_id || null,
+      content: raw?.content || '',
+      author: {
+        id: rawAuthor?.id || null,
+        username: rawAuthor?.username || rawAuthor?.global_name || 'Unknown User',
+        globalName: rawAuthor?.global_name || rawAuthor?.globalName || null,
+        displayName:
+          raw?.member?.nick ||
+          rawAuthor?.global_name ||
+          rawAuthor?.globalName ||
+          rawAuthor?.username ||
+          'Unknown User',
+        bot: Boolean(rawAuthor?.bot),
+        displayAvatarURL: () => {
+          if (!rawAuthor?.id || !rawAuthor?.avatar) return null;
+          return `https://cdn.gamevox.com/avatars/${rawAuthor.id}/${rawAuthor.avatar}.png`;
+        },
+      },
+      member: raw?.member
+        ? {
+            displayName:
+              raw.member.nick ||
+              rawAuthor?.global_name ||
+              rawAuthor?.globalName ||
+              rawAuthor?.username ||
+              'Unknown User',
+          }
+        : null,
+      attachments,
+      webhookId: raw?.webhook_id || null,
+      raw,
+    };
+  }
+
   async watchChannel(channelId) {
     const id = String(channelId);
     const existing = this.watchedChannels.get(id);
@@ -95,16 +185,11 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     this.watchedChannels.set(id, state);
 
     try {
-      const channel = await this.getBotChannel(id);
-
-      if (!channel.messages || typeof channel.messages.fetch !== 'function') {
-        state.initialized = true;
-        return;
-      }
-
-      // Establish a cursor without replaying pre-existing history on startup.
-      const latest = await channel.messages.fetch({ limit: 1 });
-      const message = latest?.first?.() || [...(latest?.values?.() || [])][0];
+      // Use raw REST instead of discord.js MessageManager here. GameVox can
+      // legitimately return null fields that discord.js's Discord-specific
+      // Message constructor assumes are populated.
+      const latest = await this.fetchRawMessages(id, { limit: 1 });
+      const message = latest[0];
 
       if (message?.id) {
         state.lastPolledId = String(message.id);
@@ -149,12 +234,6 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     try {
       for (const [channelId, state] of this.watchedChannels) {
         try {
-          const channel = await this.getBotChannel(channelId);
-
-          if (!channel.messages || typeof channel.messages.fetch !== 'function') {
-            continue;
-          }
-
           if (!state.initialized) {
             await this.watchChannel(channelId);
             continue;
@@ -165,8 +244,10 @@ class GameVoxAdapter extends DiscordLikeAdapter {
             options.after = state.lastPolledId;
           }
 
-          const fetched = await channel.messages.fetch(options);
-          const messages = [...(fetched?.values?.() || [])];
+          const rawMessages = await this.fetchRawMessages(channelId, options);
+          const messages = rawMessages.map(raw =>
+            this.rawMessageToRelayMessage(raw, channelId)
+          );
 
           // REST returns newest-first on Discord-compatible APIs; relay oldest-first.
           messages.sort((a, b) => {
