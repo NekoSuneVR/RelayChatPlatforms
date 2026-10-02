@@ -22,12 +22,19 @@ class FluxerAdapter extends BaseAdapter {
     const { Client, Events } = await import('@fluxerjs/core');
     this.Events = Events;
 
-    if (this.definition.discoveryOrigin) {
-      this.client = await Client.fromDiscovery(this.definition.discoveryOrigin);
+    const discoveryOrigin =
+      this.definition.discoveryOrigin ||
+      (this.definition.discoveryEnv && process.env[this.definition.discoveryEnv]?.trim());
+    const apiUrl =
+      this.definition.apiUrl ||
+      (this.definition.apiUrlEnv && process.env[this.definition.apiUrlEnv]?.trim());
+
+    if (discoveryOrigin) {
+      this.client = await Client.fromDiscovery(discoveryOrigin);
     } else {
       const options = {};
-      if (this.definition.apiUrl) {
-        options.rest = { api: this.definition.apiUrl };
+      if (apiUrl) {
+        options.rest = { api: apiUrl };
       }
       this.client = new Client(options);
     }
