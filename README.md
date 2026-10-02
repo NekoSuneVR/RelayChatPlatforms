@@ -4,6 +4,8 @@ A platform-aware Node.js relay designed to bridge chat between:
 
 - Discord
 - GameVox
+- Fluxer (`@fluxerjs/core`)
+- Matrix (`matrix-bot-sdk`)
 - Root (`@rootsdk/server-bot`)
 - Vector (`@nekosuneprojects/vector-sdk`)
 - Stoat (`stoat.js`)
@@ -27,6 +29,30 @@ Also uses `discord.js`, with GameVox's Discord-compatible REST/Gateway:
 rest: { api: 'https://bot-api.gamevox.com/api' },
 ws:   { gatewayURL: 'wss://gateway.gamevox.com' },
 ```
+
+### Fluxer
+
+Uses [`@fluxerjs/core`](https://fluxer.js.org/) v3.x. Fluxer does not use Discord-style gateway intents; the adapter creates a native Fluxer client, listens for `MessageCreate`, fetches configured channels, and sends through `channel.send()`.
+
+```json
+"fluxer-main": {
+  "type": "fluxer",
+  "displayName": "Fluxer",
+  "tokenEnv": "FLUXER_BOT_TOKEN",
+  "apiUrlEnv": "FLUXER_API_URL"
+}
+```
+
+Put the bot token in `.env`:
+
+```dotenv
+FLUXER_BOT_TOKEN=
+FLUXER_API_URL=
+```
+
+Leave `FLUXER_API_URL` blank for hosted Fluxer. For a self-hosted instance you can either set `apiUrl` / `apiUrlEnv` for the legacy REST override, or use `discoveryOrigin` / `discoveryEnv` so Fluxer.js discovers the API, media/CDN and invite endpoints from `/.well-known/fluxer`. The channel ID in a relay group is the Fluxer channel ID.
+
+Fluxer text messages and uploaded files are relayed in both directions. Bot/webhook messages are ignored to prevent loops. The adapter also normalizes usernames, display names and avatar URLs into the common relay format.
 
 ### Stoat
 
@@ -242,6 +268,14 @@ The same group can span every platform:
       "channelId": "222222222222222222"
     },
     {
+      "platform": "fluxer-main",
+      "channelId": "333333333333333333"
+    },
+    {
+      "platform": "matrix-main",
+      "channelId": "#general:example.org"
+    },
+    {
       "platform": "rootapp-main",
       "channelId": "root-chat-id"
     },
@@ -269,7 +303,8 @@ keep every platform in `relays.json` and turn them on by filling in `.env`:
 
 | Platform | Disabled when |
 | --- | --- |
-| Discord / GameVox / Stoat | its `tokenEnv` is blank |
+| Discord / GameVox / Fluxer / Stoat | its `tokenEnv` is blank |
+| Matrix | access token is blank and no username/password login is configured |
 | Vector | no account file, and every key/seed env var is blank (unless `createAccount`) |
 | Root | not launched by Root's host (`npm run root:dev` or Root cloud) |
 
@@ -292,6 +327,12 @@ Platforms are declared separately from relay groups.
     "type": "gamevox",
     "displayName": "GameVox",
     "tokenEnv": "GAMEVOX_BOT_TOKEN"
+  },
+  "fluxer-main": {
+    "type": "fluxer",
+    "displayName": "Fluxer",
+    "tokenEnv": "FLUXER_BOT_TOKEN",
+    "apiUrlEnv": "FLUXER_API_URL"
   }
 }
 ```
@@ -320,7 +361,7 @@ platform later, for example:
 
 # Install
 
-Requires Node.js 22.15+ (`stoat.js` is ESM-only and needs it).
+Requires Node.js 22.15+. This also satisfies Fluxer.js 3.x, which requires Node.js 22.13+.
 
 ```bash
 npm install
@@ -388,7 +429,7 @@ normalizeMessage()
 destroy()
 ```
 
-Because of that, Matrix or another platform can be added without modifying the central relay engine.
+Because of that, Fluxer, Matrix, or another platform can be added without modifying the central relay engine.
 
 A platform-specific adapter only needs to convert that platform's message
 format into the relay's normalized structure:
@@ -423,8 +464,10 @@ The current adapters relay:
 
 - text
 - attachment URLs
+- uploaded files where the destination adapter supports them
 - source platform
-- display name
+- username/display name
+- avatar metadata used by supported destinations
 
 They currently do not synchronize:
 
