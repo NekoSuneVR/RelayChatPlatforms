@@ -19,7 +19,6 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     this.incomingPollTimer = null;
     this.pollingIncoming = false;
     this.gameVoxUserCache = new Map();
-    this.loggedUnknownAuthorMessages = new Set();
     this.incomingPollIntervalMs = Math.max(
       1000,
       Number(this.definition.incomingPollIntervalMs || 5000)
@@ -313,19 +312,6 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       resolvedUser?.displayName ||
       resolvedUser?.username ||
       username;
-
-    if (username === 'Unknown User') {
-      const key = String(raw?.id || 'unknown');
-      if (!this.loggedUnknownAuthorMessages.has(key)) {
-        this.loggedUnknownAuthorMessages.add(key);
-        console.warn(
-          `[${this.displayName}] REST message ${key} contains no author identity; ` +
-          `authorId=${authorId || 'none'}; message keys=${Object.keys(raw || {}).join(',')}; ` +
-          `member keys=${Object.keys(rawMember || {}).join(',')}; author type=${typeof raw?.author}. ` +
-          'GameVox REST history cannot provide a username for this message.'
-        );
-      }
-    }
 
     const attachments = new Map(
       (Array.isArray(raw?.attachments) ? raw.attachments : []).map((file, index) => [
