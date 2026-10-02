@@ -32,6 +32,49 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     ];
   }
 
+  createClient() {
+    const client = super.createClient();
+
+    // discord.js may fail to build a Message when GameVox sends fields that are
+    // valid for GameVox but not what discord.js expects. Listen to the raw
+    // gateway packet as well so MESSAGE_CREATE can still be relayed with its
+    // original author payload.
+    client.on('raw', packet => {
+      if (packet?.t !== 'MESSAGE_CREATE' || !packet?.d?.id) {
+        return;
+      }
+
+      this.handleRawGatewayMessage(packet.d).catch(error => {
+        console.error(
+          `[${this.displayName}] raw MESSAGE_CREATE handling failed: ${error.message}`
+        );
+      });
+    });
+
+    return client;
+  }
+
+  async handleRawGatewayMessage(raw) {
+    const message = await this.rawMessageToRelayMessage(
+      raw,
+      raw?.channel_id || raw?.channelId
+    );
+
+    if (
+      message?.author?.username === 'Unknown User' &&
+      !this.loggedUnknownGatewayAuthorShape
+    ) {
+      this.loggedUnknownGatewayAuthorShape = true;
+      console.warn(
+        `[${this.displayName}] raw gateway MESSAGE_CREATE also has no author data; ` +
+          `message keys=${Object.keys(raw || {}).join(',')}; ` +
+          `author type=${typeof raw?.author}`
+      );
+    }
+
+    this.dispatchIncoming(message, 'gateway-raw');
+  }
+
   async connect() {
     await super.connect();
     this.startIncomingPoller();
@@ -74,6 +117,10 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     if (source === 'rest') {
       console.log(
         `[${this.displayName}] recovered incoming message ${message.id} through REST polling`
+      );
+    } else if (source === 'gateway-raw' && process.env.DEBUG === '1') {
+      console.log(
+        `[${this.displayName}] received raw gateway MESSAGE_CREATE ${message.id}`
       );
     }
 
@@ -272,9 +319,10 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       if (!this.loggedUnknownAuthorMessages.has(key)) {
         this.loggedUnknownAuthorMessages.add(key);
         console.warn(
-          `[${this.displayName}] REST message ${key} has no resolvable author; ` +
+          `[${this.displayName}] REST message ${key} contains no author identity; ` +
           `authorId=${authorId || 'none'}; message keys=${Object.keys(raw || {}).join(',')}; ` +
-          `member keys=${Object.keys(rawMember || {}).join(',')}; author type=${typeof raw?.author}`
+          `member keys=${Object.keys(rawMember || {}).join(',')}; author type=${typeof raw?.author}. ` +
+          'GameVox REST history cannot provide a username for this message.'
         );
       }
     }
