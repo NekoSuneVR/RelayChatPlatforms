@@ -120,7 +120,54 @@ class GameVoxAdapter extends DiscordLikeAdapter {
   }
 
   rawMessageToRelayMessage(raw, channelId) {
-    const rawAuthor = raw?.author || raw?.member?.user || {};
+    // GameVox history responses are not always shaped exactly like Discord's
+    // gateway MESSAGE_CREATE payload. Prefer whichever user/member object is
+    // actually populated instead of assuming raw.author exists.
+    const rawMember = raw?.member || raw?.guild_member || raw?.guildMember || null;
+    const rawAuthor =
+      raw?.author ||
+      raw?.user ||
+      raw?.sender ||
+      rawMember?.user ||
+      rawMember?.author ||
+      {};
+
+    const authorId =
+      rawAuthor?.id ||
+      raw?.author_id ||
+      raw?.authorId ||
+      raw?.user_id ||
+      raw?.userId ||
+      rawMember?.user_id ||
+      rawMember?.userId ||
+      null;
+
+    const username =
+      rawAuthor?.username ||
+      rawAuthor?.name ||
+      rawAuthor?.display_name ||
+      rawAuthor?.displayName ||
+      raw?.username ||
+      raw?.author_name ||
+      raw?.authorName ||
+      rawMember?.username ||
+      'Unknown User';
+
+    const displayName =
+      rawMember?.nick ||
+      rawMember?.nickname ||
+      rawMember?.display_name ||
+      rawMember?.displayName ||
+      rawAuthor?.global_name ||
+      rawAuthor?.globalName ||
+      rawAuthor?.display_name ||
+      rawAuthor?.displayName ||
+      raw?.display_name ||
+      raw?.displayName ||
+      raw?.author_name ||
+      raw?.authorName ||
+      username;
+
     const attachments = new Map(
       (Array.isArray(raw?.attachments) ? raw.attachments : []).map((file, index) => [
         String(file?.id || index),
@@ -139,29 +186,25 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       guildId: raw?.guild_id || null,
       content: raw?.content || '',
       author: {
-        id: rawAuthor?.id || null,
-        username: rawAuthor?.username || rawAuthor?.global_name || 'Unknown User',
-        globalName: rawAuthor?.global_name || rawAuthor?.globalName || null,
-        displayName:
-          raw?.member?.nick ||
+        id: authorId,
+        username,
+        globalName:
           rawAuthor?.global_name ||
           rawAuthor?.globalName ||
-          rawAuthor?.username ||
-          'Unknown User',
-        bot: Boolean(rawAuthor?.bot),
+          rawAuthor?.display_name ||
+          rawAuthor?.displayName ||
+          null,
+        displayName,
+        bot: Boolean(rawAuthor?.bot || raw?.bot || rawMember?.bot),
         displayAvatarURL: () => {
-          if (!rawAuthor?.id || !rawAuthor?.avatar) return null;
-          return `https://cdn.gamevox.com/avatars/${rawAuthor.id}/${rawAuthor.avatar}.png`;
+          const avatar = rawAuthor?.avatar || raw?.avatar || rawMember?.avatar;
+          if (!authorId || !avatar) return null;
+          return `https://cdn.gamevox.com/avatars/${authorId}/${avatar}.png`;
         },
       },
-      member: raw?.member
+      member: rawMember
         ? {
-            displayName:
-              raw.member.nick ||
-              rawAuthor?.global_name ||
-              rawAuthor?.globalName ||
-              rawAuthor?.username ||
-              'Unknown User',
+            displayName,
           }
         : null,
       attachments,
