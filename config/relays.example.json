@@ -43,6 +43,12 @@
       "tokenEnv": "MATRIX_ACCESS_TOKEN",
       "userEnv": "MATRIX_USER",
       "passwordEnv": "MATRIX_PASSWORD"
+    },
+    "fluxer-main": {
+      "type": "fluxer",
+      "displayName": "Fluxer",
+      "tokenEnv": "FLUXER_BOT_TOKEN",
+      "apiUrlEnv": "FLUXER_API_URL"
     }
   },
   "relayGroups": [
@@ -57,6 +63,10 @@
         {
           "platform": "gamevox-main",
           "channelId": "GAMEVOX_CHANNEL_ID_HERE"
+        },
+        {
+          "platform": "fluxer-main",
+          "channelId": "FLUXER_CHANNEL_ID_HERE"
         },
         {
           "platform": "stoat-main",
