@@ -82,11 +82,12 @@ class GameVoxAdapter extends DiscordLikeAdapter {
 
   async watchChannel(channelId) {
     const id = String(channelId);
-    if (this.watchedChannels.has(id)) {
+    const existing = this.watchedChannels.get(id);
+    if (existing?.initialized) {
       return;
     }
 
-    const state = {
+    const state = existing || {
       lastPolledId: null,
       initialized: false,
       warned: false,
@@ -168,7 +169,9 @@ class GameVoxAdapter extends DiscordLikeAdapter {
           // REST returns newest-first on Discord-compatible APIs; relay oldest-first.
           messages.sort((a, b) => {
             try {
-              return Number(BigInt(a.id) - BigInt(b.id));
+              const left = BigInt(a.id);
+              const right = BigInt(b.id);
+              return left < right ? -1 : left > right ? 1 : 0;
             } catch {
               return String(a.id).localeCompare(String(b.id));
             }
@@ -262,7 +265,7 @@ class GameVoxAdapter extends DiscordLikeAdapter {
         if (!this.watchedChannels.has(id)) {
           this.watchedChannels.set(id, {
             lastPolledId: null,
-            initialized: true,
+            initialized: false,
             warned: false,
           });
         }
