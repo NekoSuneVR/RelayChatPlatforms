@@ -179,6 +179,37 @@ configured fails at startup with a message explaining this.
 Bot permissions (`createMessage`, `viewMessageHistory`) are declared in
 `root-manifest.json`.
 
+### Receiving messages from GameVox
+
+The GameVox gateway remains the primary receive path. The bot requests
+`Guilds`, `GuildMessages`, and the privileged `MessageContent` intent, matching
+GameVox's current discord.js setup.
+
+In the GameVox Developer Portal, open the application's **Bot** tab and make sure
+**Message Content Intent** is enabled. GameVox documents that `GUILD_MESSAGES`
+delivers `MESSAGE_CREATE`, while `MESSAGE_CONTENT` adds the message text and
+attachments.
+
+The adapter also keeps a small REST polling safety net for configured GameVox
+channels. It establishes a cursor at startup so old history is not replayed, then
+checks for newer messages every 5 seconds by default. Native gateway events are
+still delivered immediately; message IDs are deduplicated so the same message is
+not relayed twice.
+
+You can tune the fallback interval per GameVox platform:
+
+```json
+"gamevox-main": {
+  "type": "gamevox",
+  "displayName": "GameVox",
+  "tokenEnv": "GAMEVOX_BOT_TOKEN",
+  "incomingPollIntervalMs": 5000
+}
+```
+
+If the REST fallback logs a permission error, give the bot **View Channel** and
+**Read Message History** for that GameVox channel.
+
 ### GameVox webhook fallback
 
 GameVox always uses the full bot integration first: gateway events, bot channel
