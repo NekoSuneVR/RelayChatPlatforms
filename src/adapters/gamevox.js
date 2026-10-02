@@ -113,8 +113,10 @@ class GameVoxAdapter extends DiscordLikeAdapter {
 
       state.initialized = true;
     } catch (error) {
-      // Validation/send fallback may still work. The poller will retry later.
-      state.initialized = true;
+      // Validation/send fallback may still work. Leave this uninitialized so
+      // the poller establishes a fresh cursor instead of replaying old history
+      // if read access becomes available later.
+      state.initialized = false;
       if (!this.isPermissionError(error)) {
         console.warn(
           `[${this.displayName}] could not initialize receive fallback for channel ${id}: ${error.message}`
