@@ -190,11 +190,13 @@ In the GameVox Developer Portal, open the application's **Bot** tab and make sur
 delivers `MESSAGE_CREATE`, while `MESSAGE_CONTENT` adds the message text and
 attachments.
 
-The adapter also keeps a small REST polling safety net for configured GameVox
-channels. It establishes a cursor at startup so old history is not replayed, then
-checks for newer messages every 5 seconds by default. Native gateway events are
-still delivered immediately; message IDs are deduplicated so the same message is
-not relayed twice.
+The adapter also keeps a small **raw REST** polling safety net for configured
+GameVox channels. It deliberately reads the Discord-compatible JSON directly
+instead of passing message history through discord.js, because GameVox may return
+nullable fields that discord.js assumes are populated. It establishes a cursor at
+startup so old history is not replayed, then checks for newer messages every 5
+seconds by default. Native gateway events are still delivered immediately;
+message IDs are deduplicated so the same message is not relayed twice.
 
 You can tune the fallback interval per GameVox platform:
 
