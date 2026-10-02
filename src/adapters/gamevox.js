@@ -34,7 +34,6 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       .join(' ');
 
     return Boolean(
-      status === 401 ||
       status === 403 ||
       code === 50001 ||
       code === 50013 ||
