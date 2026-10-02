@@ -18,6 +18,8 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     this.watchedChannels = new Map();
     this.incomingPollTimer = null;
     this.pollingIncoming = false;
+    this.gameVoxUserCache = new Map();
+    this.loggedUnknownAuthorMessages = new Set();
     this.incomingPollIntervalMs = Math.max(
       1000,
       Number(this.definition.incomingPollIntervalMs || 5000)
@@ -80,6 +82,65 @@ class GameVoxAdapter extends DiscordLikeAdapter {
     }
   }
 
+  async gameVoxRawGet(pathname) {
+    const url = new URL(
+      `https://bot-api.gamevox.com/api/v10/${String(pathname).replace(/^\\/+/, '')}`
+    );
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bot ${this.getToken()}`,
+        Accept: 'application/json',
+      },
+    });
+
+    const body = await response.text();
+    let data;
+
+    try {
+      data = body ? JSON.parse(body) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!response.ok) {
+      const error = new Error(
+        data?.message ||
+        `GameVox REST returned ${response.status}: ${body.slice(0, 200)}`
+      );
+      error.status = response.status;
+      error.code = data?.code;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  async resolveGameVoxUser(authorId) {
+    if (!authorId) return null;
+
+    const id = String(authorId);
+    if (this.gameVoxUserCache.has(id)) {
+      return this.gameVoxUserCache.get(id);
+    }
+
+    try {
+      const user = await this.gameVoxRawGet(`users/${encodeURIComponent(id)}`);
+      if (user && typeof user === 'object') {
+        this.gameVoxUserCache.set(id, user);
+        return user;
+      }
+    } catch (error) {
+      console.warn(
+        `[${this.displayName}] could not resolve GameVox user ${id}: ${error.message}`
+      );
+    }
+
+    this.gameVoxUserCache.set(id, null);
+    return null;
+  }
+
   async fetchRawMessages(channelId, options = {}) {
     const url = new URL(
       `https://bot-api.gamevox.com/api/v10/channels/${encodeURIComponent(String(channelId))}/messages`
@@ -116,10 +177,14 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       throw error;
     }
 
-    return Array.isArray(data) ? data : [];
+    return Array.isArray(data)
+      ? data
+      : Array.isArray(data?.messages)
+        ? data.messages
+        : [];
   }
 
-  rawMessageToRelayMessage(raw, channelId) {
+  async rawMessageToRelayMessage(raw, channelId) {
     // GameVox history responses are not always shaped exactly like Discord's
     // gateway MESSAGE_CREATE payload. Prefer whichever user/member object is
     // actually populated instead of assuming raw.author exists.
@@ -158,7 +223,8 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       rawMember?.userId ||
       null;
 
-    const username =
+    let resolvedUser = null;
+    const inlineUsername =
       rawAuthor?.username ||
       rawAuthor?.name ||
       rawAuthor?.display_name ||
@@ -167,6 +233,18 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       raw?.author_name ||
       raw?.authorName ||
       rawMember?.username ||
+      null;
+
+    if (!inlineUsername && authorId) {
+      resolvedUser = await this.resolveGameVoxUser(authorId);
+    }
+
+    const username =
+      inlineUsername ||
+      resolvedUser?.username ||
+      resolvedUser?.name ||
+      resolvedUser?.display_name ||
+      resolvedUser?.displayName ||
       'Unknown User';
 
     const displayName =
@@ -182,16 +260,23 @@ class GameVoxAdapter extends DiscordLikeAdapter {
       raw?.displayName ||
       raw?.author_name ||
       raw?.authorName ||
+      resolvedUser?.global_name ||
+      resolvedUser?.globalName ||
+      resolvedUser?.display_name ||
+      resolvedUser?.displayName ||
+      resolvedUser?.username ||
       username;
 
-    if (username === 'Unknown User' && !this.loggedUnknownAuthorShape) {
-      this.loggedUnknownAuthorShape = true;
-      console.warn(
-        `[${this.displayName}] unknown REST author shape; message keys=` +
-          Object.keys(raw || {}).join(',') +
-          `; member keys=${Object.keys(rawMember || {}).join(',')}` +
-          `; author type=${typeof raw?.author}`
-      );
+    if (username === 'Unknown User') {
+      const key = String(raw?.id || 'unknown');
+      if (!this.loggedUnknownAuthorMessages.has(key)) {
+        this.loggedUnknownAuthorMessages.add(key);
+        console.warn(
+          `[${this.displayName}] REST message ${key} has no resolvable author; ` +
+          `authorId=${authorId || 'none'}; message keys=${Object.keys(raw || {}).join(',')}; ` +
+          `member keys=${Object.keys(rawMember || {}).join(',')}; author type=${typeof raw?.author}`
+        );
+      }
     }
 
     const attachments = new Map(
@@ -223,7 +308,11 @@ class GameVoxAdapter extends DiscordLikeAdapter {
         displayName,
         bot: Boolean(rawAuthor?.bot || raw?.bot || rawMember?.bot),
         displayAvatarURL: () => {
-          const avatar = rawAuthor?.avatar || raw?.avatar || rawMember?.avatar;
+          const avatar =
+            rawAuthor?.avatar ||
+            raw?.avatar ||
+            rawMember?.avatar ||
+            resolvedUser?.avatar;
           if (!authorId || !avatar) return null;
           return `https://cdn.gamevox.com/avatars/${authorId}/${avatar}.png`;
         },
@@ -314,8 +403,8 @@ class GameVoxAdapter extends DiscordLikeAdapter {
           }
 
           const rawMessages = await this.fetchRawMessages(channelId, options);
-          const messages = rawMessages.map(raw =>
-            this.rawMessageToRelayMessage(raw, channelId)
+          const messages = await Promise.all(
+            rawMessages.map(raw => this.rawMessageToRelayMessage(raw, channelId))
           );
 
           // REST returns newest-first on Discord-compatible APIs; relay oldest-first.
